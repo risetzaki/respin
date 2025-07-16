@@ -1,0 +1,48 @@
+- name: Update and upgrade APT packages
+  ansible.builtin.apt:
+    update_cache: true
+    upgrade: dist
+
+- name: Download MISP installer script
+  ansible.builtin.get_url:
+    url: https://raw.githubusercontent.com/MISP/MISP/2.4/INSTALL/INSTALL.sh
+    dest: /tmp/INSTALL.sh
+    force: true
+    mode: '0755'
+
+- name: Make the installer script executable
+  ansible.builtin.file:
+    path: /tmp/INSTALL.sh
+    mode: '0755'
+    state: file
+
+- name: Create user 'misp'
+  ansible.builtin.user:
+    name: misp
+    shell: /bin/bash
+    create_home: yes
+
+- name: Set ownership of /tmp/INSTALL.sh to misp
+  ansible.builtin.file:
+    path: /tmp/INSTALL.sh
+    owner: misp
+    group: misp
+
+- name: Run the MISP installer with automatic mode
+  ansible.builtin.command:
+    cmd: bash /tmp/INSTALL.sh -A
+    chdir: /tmp
+    creates: /var/www/MISP
+  become: yes
+  become_user: misp
+
+- name: Empty baseurl on MISP configuration
+  ansible.builtin.replace:
+    path: /var/www/MISP/app/Config/config.php
+    regexp: "'baseurl'\\s*=>\\s*'.*?',"
+    replace: "'baseurl' => '',"
+
+- name: Restart apache2 service
+  ansible.builtin.service:
+    name: apache2
+    state: restarted

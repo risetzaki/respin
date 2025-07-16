@@ -1,0 +1,20 @@
+- name: Add Suricata and ModSecurity configuration to ossec.conf
+  ansible.builtin.blockinfile:
+    path: /var/ossec/etc/ossec.conf
+    insertafter: '<location>/var/log/dpkg.log</location>'
+    marker: ""
+    block: |
+      <localfile>
+        <log_format>json</log_format>
+        <location>/var/log/suricata/eve.json</location>
+      </localfile>
+
+      <localfile>
+        <log_format>apache</log_format>
+        <location>/var/log/apache2/modsec_audit.log</location>
+      </localfile>
+
+- name: Restart wazuh-agent
+  ansible.builtin.service:
+    name: wazuh-agent
+    state: restarted

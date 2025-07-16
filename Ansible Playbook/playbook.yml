@@ -1,0 +1,44 @@
+- name: Install Shuffle
+  hosts: shuffle
+  become: true
+  roles:
+    - docker
+    - shuffle
+
+- name: Install MISP
+  hosts: misp
+  become: true
+  roles:
+    - misp
+
+- name: Install DFIR-IRIS
+  hosts: dfir-iris
+  become: true
+  vars:
+    iris_passwd: CreateYourOwnPassword
+    iris_version: v2.4.20
+  roles:
+    - docker
+    - dfir_iris
+
+- name: Install Wazuh Server with Docker
+  hosts: wazuh-server
+  become: true
+  roles: 
+    - docker
+    - wazuh_server_docker
+
+- name: Install Agent
+  hosts: wazuh-agent
+  become: true
+  vars:
+    wazuh_manager: 172.20.10.105
+    wazuh_agent_group: virtual_LAB
+    wazuh_agent_name: LAB_Ubuntu
+    agent_ip: 172.20.10.114
+    suricata_interface: ens33
+  roles:
+    - wazuh_agent
+    - waf
+    - suricata
+    - log_integration

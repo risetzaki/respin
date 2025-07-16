@@ -1,0 +1,47 @@
+- name: Install Git package
+  ansible.builtin.apt:
+    name: git
+    state: present
+    update_cache: true
+
+- name: Check if /opt/Shuffle exists
+  ansible.builtin.stat:
+    path: /opt/Shuffle
+  register: shuffle_dir
+
+- name: Clone Shuffle repository
+  ansible.builtin.git:
+    repo: https://github.com/Shuffle/Shuffle.git
+    dest: /opt/Shuffle
+    update: true
+    clone: true
+    version: main
+  when: not shuffle_dir.stat.exists
+
+- name: Check current ownership of shuffle-database
+  ansible.builtin.stat:
+    path: /opt/Shuffle/shuffle-database
+  register: shuffle_db_stat
+
+- name: Change ownership of shuffle-database if UID/GID not 1000
+  ansible.builtin.command:
+    cmd: chown -R 1000:1000 /opt/Shuffle/shuffle-database
+  when: shuffle_db_stat.stat.uid != 1000 or shuffle_db_stat.stat.gid != 1000
+  changed_when: true
+
+- name: Check if swap is active
+  ansible.builtin.command:
+    cmd: swapon --show
+  register: swap_status
+  changed_when: false
+
+- name: Turn off swap if active
+  ansible.builtin.command:
+    cmd: swapoff -a
+  when: swap_status.stdout != ''
+  changed_when: true
+
+- name: Run docker-compose
+  community.docker.docker_compose_v2:
+    project_src: /opt/Shuffle/
+    state: present

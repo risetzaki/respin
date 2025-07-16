@@ -1,0 +1,29 @@
+- name: Download Wazuh installation script
+  ansible.builtin.get_url:
+    url: https://packages.wazuh.com/4.x/apt/pool/main/w/wazuh-agent/wazuh-agent_4.9.2-1_amd64.deb
+    dest: /home/wazuh-agent_4.9.2-1_amd64.deb
+    mode: '0755'
+
+- name: Wazuh agent install
+  ansible.builtin.shell: |
+    sudo WAZUH_MANAGER={{ wazuh_manager }} WAZUH_AGENT_GROUP={{ wazuh_agent_group }} WAZUH_AGENT_NAME={{ wazuh_agent_name }} dpkg -i /home/wazuh-agent_4.9.2-1_amd64.deb
+  args:
+    executable: /bin/bash
+  register: wazuh_install
+  changed_when: wazuh_install.rc == 0
+
+- name: Reload systemd configuration
+  ansible.builtin.systemd:
+    daemon_reload: true
+  register: daemon_reload
+  changed_when: daemon_reload.changed
+
+- name: Enable Wazuh Agent service
+  ansible.builtin.systemd:
+    name: wazuh-agent
+    enabled: true
+
+- name: Start Wazuh Agent service
+  ansible.builtin.systemd:
+    name: wazuh-agent
+    state: started

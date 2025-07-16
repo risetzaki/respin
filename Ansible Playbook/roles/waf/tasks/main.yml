@@ -1,0 +1,107 @@
+- name: Update apt cache and install apache-utils
+  ansible.builtin.apt:
+    name: apache2
+    state: present
+    update_cache: true
+
+- name: Install apache2-utils package
+  ansible.builtin.apt:
+    name: apache2-utils
+    state: present
+
+- name: Install ModSecurity
+  ansible.builtin.apt:
+    name: libapache2-mod-security2
+    state: present
+
+- name: Enable ModSecurity module in Apache
+  community.general.apache2_module:
+    name: security2
+    state: present
+
+- name: Rename ModSecurity configuration file if not already done
+  ansible.builtin.command: mv /etc/modsecurity/modsecurity.conf-recommended /etc/modsecurity/modsecurity.conf
+  args:
+    creates: /etc/modsecurity/modsecurity.conf
+
+- name: Ensure ModSecurity is enabled
+  ansible.builtin.service:
+    name: apache2
+    state: restarted
+
+- name: Configure ModSecurity to enable engine
+  ansible.builtin.lineinfile:
+    path: /etc/modsecurity/modsecurity.conf
+    regexp: '^SecRuleEngine\s+'
+    line: 'SecRuleEngine DetectionOnly'
+
+- name: Configure ModSecurity audit log parts
+  ansible.builtin.lineinfile:
+    path: /etc/modsecurity/modsecurity.conf
+    regexp: '^SecAuditLogParts\s+'
+    line: 'SecAuditLogParts ABCEFHJKZ'
+
+- name: Restart Apache to apply ModSecurity changes
+  ansible.builtin.service:
+    name: apache2
+    state: restarted
+
+- name: Create directory for ModSecurity CRS
+  ansible.builtin.file:
+    path: /etc/apache2/modsecurity-crs/
+    state: directory
+    mode: '0755'
+
+- name: Download OWASP CRS 4.4
+  ansible.builtin.get_url:
+    url: https://github.com/coreruleset/coreruleset/archive/v4.4.0.tar.gz
+    dest: /tmp/v4.4.0.tar.gz
+    mode: '0644'
+
+- name: Extract OWASP CRS 4.4
+  ansible.builtin.unarchive:
+    src: /tmp/v4.4.0.tar.gz
+    dest: /etc/apache2/modsecurity-crs/
+    remote_src: true
+
+- name: Rename extracted CRS directory
+  ansible.builtin.command: mv /etc/apache2/modsecurity-crs/coreruleset-4.4.0 /etc/apache2/modsecurity-crs/coreruleset
+  args:
+    creates: /etc/apache2/modsecurity-crs/coreruleset
+
+- name: Rename crs-setup.conf.example
+  ansible.builtin.command: mv /etc/apache2/modsecurity-crs/coreruleset/crs-setup.conf.example /etc/apache2/modsecurity-crs/coreruleset/crs-setup.conf
+  args:
+    creates: /etc/apache2/modsecurity-crs/coreruleset/crs-setup.conf
+
+- name: Include Core Rule Set paths in security2.conf
+  ansible.builtin.blockinfile:
+    path: /etc/apache2/mods-enabled/security2.conf
+    insertafter: '# Include OWASP ModSecurity CRS rules if installed'
+    block: |
+      IncludeOptional /etc/apache2/modsecurity-crs/coreruleset/crs-setup.conf
+      IncludeOptional /etc/apache2/modsecurity-crs/coreruleset/rules/*.conf
+
+- name: Remove default CRS load directive if present
+  ansible.builtin.replace:
+    path: /etc/apache2/mods-enabled/security2.conf
+    regexp: '^\s*IncludeOptional /usr/share/modsecurity-crs/\*\.load$'
+    replace: ''
+
+- name: Backup problematic CRS rule
+  ansible.builtin.command: >
+    mv /etc/apache2/modsecurity-crs/coreruleset/rules/REQUEST-922-MULTIPART-ATTACK.conf
+       /etc/apache2/modsecurity-crs/coreruleset/rules/REQUEST-922-MULTIPART-ATTACK.conf.bak
+  args:
+    creates: /etc/apache2/modsecurity-crs/coreruleset/rules/REQUEST-922-MULTIPART-ATTACK.conf.bak
+
+- name: Check Apache configuration syntax
+  ansible.builtin.command: apache2ctl -t
+  register: apache_syntax_check
+  changed_when: false
+  failed_when: apache_syntax_check.rc != 0
+
+- name: Restart Apache to apply CRS changes
+  ansible.builtin.service:
+    name: apache2
+    state: restarted

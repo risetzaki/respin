@@ -1,0 +1,55 @@
+- name: Install Git package
+  ansible.builtin.apt:
+    name: git
+    state: present
+    update_cache: true
+
+- name: Check if DFIR-IRIS directory exists
+  ansible.builtin.stat:
+    path: /opt/iris-web
+  register: iris_directory
+
+- name: Cloning IRIS repository
+  ansible.builtin.git:
+    dest: /opt/iris-web
+    repo: https://github.com/dfir-iris/iris-web.git
+    update: true
+    clone: true
+  when: not iris_directory.stat.exists
+
+- name: Checkout to specific version
+  ansible.builtin.command:
+    cmd: git checkout {{ iris_version }}
+    chdir: /opt/iris-web
+  when: iris_directory.stat.exists
+
+- name: Copy .env.model to .env
+  ansible.builtin.copy:
+    src: /opt/iris-web/.env.model
+    dest: /opt/iris-web/.env
+    #owner: root
+    #group: root
+    mode: '0644'
+    remote_src: true
+
+- name: Set DFIR-IRIS password
+  ansible.builtin.lineinfile:
+    path: /opt/iris-web/.env
+    regexp: '^#(IRIS_ADM_PASSWORD=.*)'
+    line: 'IRIS_ADM_PASSWORD={{ iris_passwd }}'
+
+- name: Set IMAGE_TAG 
+  ansible.builtin.replace:
+    path: /opt/iris-web/.env
+    regexp: '^(\w+_IMAGE_TAG)=latest'
+    replace: '\1={{ iris_version }}'
+
+- name: Pull docker compose
+  community.docker.docker_compose_v2:
+    project_src: /opt/iris-web
+    pull: always
+
+- name: Run docker-compose
+  community.docker.docker_compose_v2:
+    project_src: /opt/iris-web
+    #state: present

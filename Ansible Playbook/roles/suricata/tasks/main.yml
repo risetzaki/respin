@@ -1,0 +1,86 @@
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Upgrade all system packages
+  ansible.builtin.apt:
+    upgrade: dist
+
+- name: Add Suricata stable PPA
+  ansible.builtin.apt_repository:
+    repo: ppa:oisf/suricata-stable
+    state: present
+    update_cache: yes
+
+- name: Install Suricata
+  ansible.builtin.apt:
+    name: suricata
+    state: present
+
+- name: Ubah interface di blok af-packet saja
+  ansible.builtin.replace:
+    path: /etc/suricata/suricata.yaml
+    regexp: '^(af-packet:\n(?:\s+-\s+.*\n)*\s+-\s+interface: )\S+'
+    replace: '\1{{ suricata_interface }}'
+
+- name: Ganti HOME_NET dengan IP agent
+  ansible.builtin.replace:
+    path: /etc/suricata/suricata.yaml
+    regexp: '^(\s*)HOME_NET:.*$'
+    replace: '\1HOME_NET: "{{ agent_ip }}"'
+
+- name: Ganti default-rule-path
+  ansible.builtin.replace:
+    path: /etc/suricata/suricata.yaml
+    regexp: '^(\s*)default-rule-path:.*$'
+    replace: '\1default-rule-path: /etc/suricata/rules'
+
+- name: Ganti suricata.rules dengan *.rules
+  ansible.builtin.replace:
+    path: /etc/suricata/suricata.yaml
+    regexp: 'suricata\.rules'
+    replace: '"*.rules"'
+
+- name: Update Suricata rules
+  ansible.builtin.command: suricata-update
+  register: suricata_update_result
+  changed_when: "'No changes detected' not in suricata_update_result.stdout"
+
+- name: Ensure /tmp directory is clean for rule download
+  ansible.builtin.file:
+    path: /tmp/emerging.rules.tar.gz
+    state: absent
+
+- name: Download Emerging Threats rules
+  ansible.builtin.get_url:
+    url: https://rules.emergingthreats.net/open/suricata-6.0.8/emerging.rules.tar.gz
+    dest: /tmp/emerging.rules.tar.gz
+    mode: '0644'
+
+- name: Extract rules to temporary location
+  ansible.builtin.unarchive:
+    src: /tmp/emerging.rules.tar.gz
+    dest: /tmp/
+    remote_src: yes
+
+- name: Create rules directory if not exists
+  ansible.builtin.file:
+    path: /etc/suricata/rules
+    state: directory
+    mode: '0755'
+
+- name: Move extracted rules to Suricata rules directory
+  ansible.builtin.copy:
+    src: /tmp/rules/
+    dest: /etc/suricata/rules/
+    owner: root
+    group: root
+    mode: '0640'
+    remote_src: yes
+
+- name: Ensure Suricata service is enabled and restarted
+  ansible.builtin.systemd:
+    name: suricata
+    enabled: true
+    state: restarted
